@@ -23,6 +23,7 @@ Load packages:
 
 ```{r packages}
 library(rgbif)  # to handle GBIF data
+library(here) # to work with paths
 library(tidyverse)  # to do datascience
 library(tidylog)
 ```
@@ -34,11 +35,11 @@ library(tidylog)
 ```{r filepath}
 key <- "0175987-210914110416597"
 zip_filename <- paste0(key, ".zip")
-zip_path <- here::here("data", "raw", zip_filename)
+zip_path <- here("data", "raw", zip_filename)
 if (!file.exists(zip_path)) {
   occ <- occ_download_get(
     key = key, 
-    path = here::here("data", "raw")
+    path = here("data", "raw")
   )
 }
 ```
