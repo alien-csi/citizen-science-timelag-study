@@ -1,0 +1,64 @@
+---
+title: "Download GBIF datasets"
+author: "Damiano Oldoni"
+date: "8-3-2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Load libraries:
+
+```{r load_libraries_download_eu}
+library(rgbif)          # To use GBIF services
+```
+
+# Define download query parameters
+
+## Datasets
+
+```{r datasets}
+dataset_keys <- c(
+"9a0b66df-7535-4f28-9f4e-5bc11b8b096c",
+"7f5e4129-0717-428e-876a-464fbd5d9a47",
+"629befd5-fb45-4365-95c4-d07e72479b37"
+)
+```
+
+# Download GBIF occurrences
+
+## Trigger download
+
+**Note**: GBIF credentials are required in the next step. 
+
+Trigger download:
+
+```{r trigger_download}
+# Reuse existing download (comment to trigger new download)
+# gbif_download_key <- "0175708-210914110416597"
+
+# Trigger new download (commented by default)
+gbif_download_key <- occ_download(
+  pred_in("datasetKey", dataset_keys),
+  user = rstudioapi::askForPassword("GBIF username"),
+  pwd = rstudioapi::askForPassword("GBIF password"),
+  email = rstudioapi::askForPassword("Email address for notification")
+)
+```
+
+## Check status of download
+
+```{r check_metadata_eu}
+metadata <- occ_download_meta(key = gbif_download_key)
+metadata$key
+metadata$status
+```

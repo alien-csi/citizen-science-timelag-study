@@ -1,0 +1,382 @@
+---
+title: "Time lag comparison"
+author: "Damiano Oldoni"
+date: "8-3-2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goal
+
+See issue [#1](https://github.com/alien-csi/citizen-science-timelag-study/issues/1).
+
+# Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+Load packages:
+
+```{r packages}
+library(rgbif)  # to handle GBIF data
+library(tidyverse)  # to do datascience
+library(tidylog)
+```
+
+# Get data
+
+## Get data from occurrence datasets
+
+```{r filepath}
+key <- "0175987-210914110416597"
+zip_filename <- paste0(key, ".zip")
+zip_path <- here::here("data", "raw", zip_filename)
+if (!file.exists(zip_path)) {
+  occ <- occ_download_get(
+    key = key, 
+    path = here::here("data", "raw")
+  )
+}
+```
+
+We unzip the text file with occurrences as  `key_number` + `occurrence.txt` in `./data/raw`:
+
+```{r unzip_csv_occs_eu}
+occ_file <- paste(key, "occurrence.txt", sep = "_")
+occ_path <- here::here("data", "raw", occ_file)
+
+if (!file.exists(here::here("data", "raw", occ_file))) {
+  unzip(zipfile = zip_path,
+        files = "occurrence.txt",
+        exdir = here::here("data", "raw"))
+  file.rename(from = here::here("data", "raw", "occurrence.txt"),
+              to = occ_path
+  )
+}
+``` 
+
+Name of columns:
+
+```{r get_cols_occsfile_eu}
+cols_occ_file <- read_delim(
+  occ_path, "\t", n_max = 1,
+  quote = ""
+)
+cols_occ_file <- names(cols_occ_file)
+```
+
+Number of columns present:
+
+```{r n_cols_occ_file}
+length(cols_occ_file)
+```
+
+### Define columns to select
+
+We define a subset of columns we are interested to:
+
+```{r columns_to_use_eu}
+cols_to_use <- c("gbifID", 
+                 "scientificName",
+                 "kingdom",
+                 "phylum",
+                 "class",
+                 "order",
+                 "family",
+                 "genus",
+                 "specificEpithet",
+                 "infraspecificEpithet",
+                 "taxonRank",
+                 "taxonomicStatus",
+                 "datasetKey",
+                 "basisOfRecord",
+                 "occurrenceStatus",
+                 "lastInterpreted",
+                 "identificationVerificationStatus",
+                 "hasCoordinate",
+                 "hasGeospatialIssues",
+                 "decimalLatitude",
+                 "decimalLongitude",
+                 "coordinateUncertaintyInMeters",
+                 "coordinatePrecision",
+                 "pointRadiusSpatialFit",
+                 "verbatimCoordinateSystem",
+                 "verbatimSRS",
+                 "eventDate",
+                 "startDayOfYear",
+                 "endDayOfYear",
+                 "year",
+                 "month",
+                 "day",
+                 "verbatimEventDate",
+                 "samplingProtocol",
+                 "samplingEffort",
+                 "issue",
+                 "taxonKey",
+                 "acceptedTaxonKey",
+                 "kingdomKey",
+                 "phylumKey",
+                 "classKey",
+                 "orderKey",
+                 "familyKey",
+                 "genusKey",
+                 "subgenusKey",
+                 "speciesKey",
+                 "species")
+```
+
+Columns in occurrence file not present in the subset:
+
+```{r cols_in_cols_to_use_not_present_in_cols_occ_db_eu}
+cols_to_use[which(!cols_to_use %in% cols_occ_file)]
+```
+
+will be removed from the selection:
+
+```{r remove_cols_not_in_cols_occ_db_eu}
+cols_to_use <- cols_to_use[which(cols_to_use %in% cols_occ_file)]
+```
+
+Final number of columns to select:
+
+```{r n_cols_to_use_eu}
+length(cols_to_use)
+```
+
+### Define column type specifications
+
+The following columns should contain integers:
+
+1. `*Key`, e.g. `taxonKey`, `speciesKey`
+2. `*DayOfYear`: `startDayOfYear` and  `endDayOfYear`  
+3. `year`
+4. `month`
+5. `day`
+
+```{r define_col_integer_for_specific_columns_eu}
+int_colnames <- 
+  cols_to_use[str_detect(cols_to_use, "Key") & 
+                !str_detect(cols_to_use, "datasetKey")]
+int_colnames <- c(
+  int_colnames,
+  cols_to_use[str_detect(cols_to_use, "DayOfYear")],
+  cols_to_use[cols_to_use == "year"],
+  cols_to_use[cols_to_use == "month"],
+  cols_to_use[cols_to_use == "day"]
+)
+
+int_cols <- 
+  map(int_colnames, ~ col_integer()) %>% 
+  setNames(int_colnames)
+```
+
+The following columns should contain real numbers:
+
+1. `decimal*`: `decimalLatitude` and `decimalLongitude`
+2. `coordinate*`: `coordinateUncertaintyInMeters` and `coordinatePrecision`
+3. `pointRadiusSpatialFit`
+
+```{r define_col_double_for_specific_columns_eu}
+real_colnames <- cols_to_use[str_detect(cols_to_use, "decimal")]
+real_colnames <- c(
+  real_colnames,
+  cols_to_use[str_detect(cols_to_use, "coordinate")],
+  cols_to_use[cols_to_use == "pointRadiusSpatialFit"]
+)
+
+real_cols <- 
+  map(real_colnames, ~ col_double()) %>% 
+  setNames(real_colnames)
+```
+
+The other columns to select contain text:
+
+```{r define_col_text_for_other_columns_eu}
+char_colnames <- cols_to_use[!cols_to_use %in% real_colnames & 
+                               !cols_to_use %in% int_colnames]
+char_cols <- 
+  map(char_colnames, ~ col_character()) %>% 
+  setNames(char_colnames)
+```
+
+Final column specification:
+
+```{r cols_type_to_use}
+col_specs <- cols_only()
+col_specs$cols <- c(char_cols, int_cols, real_cols)
+col_specs
+```
+
+### Read data
+
+Import occurrence data:
+
+```{r read_occs_in_occ_eu}
+occs <- read_tsv(
+  here::here("data", "raw", paste0(key, "_occurrence.txt")),
+  na = "",
+  quote = "",
+  col_types = col_specs)
+```
+
+Number of occurrences
+
+```{r n_occs}
+nrow(occs)
+```
+
+Number of columns:
+
+```{r n_cols_occs}
+ncol(occs)
+```
+
+Preview:
+
+```{r preview_occs}
+occs %>% head()
+```
+
+## Get data from GRIIS checklist
+
+The GRIIS checklist has been already imported and reshaped in tidy format in this workflow: [01_get_data_input_checklist_indicators.html](https://trias-project.github.io/indicators/01_get_data_input_checklist_indicators.html) from GitHub repository [`trias/indicators`](https://trias-project.github.io/indicators/). The generated output is saved in file [data_input_checklist_indicators.tsv](https://raw.githubusercontent.com/trias-project/indicators/master/data/interim/data_input_checklist_indicators.tsv).
+
+We import this file:
+
+```{r griis_data}
+griis <- data <- read_tsv(
+  "https://raw.githubusercontent.com/trias-project/indicators/master/data/interim/data_input_checklist_indicators.tsv",
+  na = "",
+  guess_max = 5000
+)
+```
+
+Preview:
+
+```{r preview_griis}
+griis %>% head()
+```
+
+# Calculate time lag
+
+## Get first observed date in citizen science occurrences
+
+Get the very first date for each taxon:
+
+```{r first_obs_occs}
+first_obs_occs <- occs %>%
+  filter(!is.na(speciesKey)) %>%
+  group_by(taxonKey,
+           speciesKey,
+           species,
+           scientificName) %>%
+  summarise(first_observed = min(year, na.rm = TRUE))
+first_obs_occs %>% head()
+```
+
+Filter dates since 2006, foundation year of waarnemingen.be:
+
+```{r filter_occs}
+first_obs_occs <- 
+  first_obs_occs %>%
+  filter(first_observed >= 2006)
+```
+
+## Get first observed date in GRIIS checklist 
+
+In `griis` the column we need to use is called `first_observed`:
+
+```{r first_observed}
+griis %>% select(key, first_observed) %>% head()
+```
+
+Filter by `locationId`: `"ISO_3166:BE"`
+
+```{r get_locality}
+griis <- griis %>%
+  filter(locationId == "ISO_3166:BE")
+```
+
+Get `first_observed` per taxon where  `first_observed` is bigger than 2009:
+
+```{r first_observed}
+first_obs_griis <- griis %>%
+  filter(first_observed > 2009) %>%
+  distinct(key, 
+           nubKey,
+           species,
+           speciesKey,
+           canonicalName,
+           taxonomicStatus,
+           first_observed,
+           scientificName,
+           kingdom) %>%
+  rename_with(.fn = ~ paste0("griis_",.))
+first_obs_griis
+```
+
+## Calculate time lag
+
+For species:
+
+```{r}
+time_lag_df <- 
+  first_obs_occs %>%
+  full_join(first_obs_griis,
+            by = c("species" = "griis_species"))
+time_lag_df
+```
+
+```{r add_time_lag_col}
+time_lag_df <- 
+  time_lag_df %>%
+  # to avoid species and subspecies conflict
+  group_by(species) %>%
+  summarise(first_observed = min(first_observed),
+            griis_first_observed = min(griis_first_observed)) %>%
+  # calculate time lag
+  mutate(time_lag = first_observed - griis_first_observed) %>%
+  relocate(species,
+           time_lag,
+           first_observed,
+           griis_first_observed)
+```
+
+Explore taxa with a positive time lag, i.e. GRIIS checklist was first:
+
+```{r time_lag_df_positives}
+time_lag_df %>%
+  filter(time_lag > 0) %>%
+  arrange(desc(time_lag))
+```
+
+Explore taxa with a negative time lag, i.e. citizen science was first:
+
+```{r time_lag_df_negative}
+time_lag_df %>%
+  filter(time_lag < 0) %>%
+  arrange(time_lag)
+```
+
+## Plot time lag distribution
+
+```{r plot_time_lag}
+ggplot(data = time_lag_df,
+       mapping = aes(x = time_lag)) + 
+  geom_histogram()
+```
+
+
+## Save time lag analysis
+Save time lag analysis:
+
+```{r save_time_lag}
+time_lag_df %>% 
+  write_tsv("./data/processed/time_lag_analysis.txt",
+            na = ""
+)
+```
