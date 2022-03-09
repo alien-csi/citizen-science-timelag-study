@@ -366,7 +366,7 @@ Save time lag analysis:
 
 ```{r save_time_lag}
 time_lag_df %>% 
-  write_tsv("./data/processed/time_lag_analysis.txt",
+  write_tsv(here("data", "processed", "time_lag_analysis.txt"),
             na = ""
 )
 ```
